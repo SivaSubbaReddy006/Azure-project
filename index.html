@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Azure Student Store</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Navigation Bar -->
+    <header>
+        <nav class="navbar">
+
+            <div class="logo">
+                Azure Student Store
+            </div>
+
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#products">Products</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+
+            <div class="cart">
+                🛒 Cart <span id="cart-count">0</span>
+            </div>
+
+        </nav>
+    </header>
+
+
+    <!-- Home Section -->
+    <section id="home" class="hero">
+
+        <div class="hero-content">
+
+            <h1>Welcome to Azure Student Store</h1>
+
+            <p>
+                Affordable products designed for students.
+                Shop smart, simple and secure.
+            </p>
+
+            <a href="#products" class="hero-button">
+                Shop Now
+            </a>
+
+        </div>
+
+    </section>
+
+
+    <!-- Products Section -->
+    <section id="products" class="products-section">
+
+        <h2>Featured Products</h2>
+
+        <div class="product-container">
+
+            <div class="product-card">
+
+                <div class="product-image">
+                    🎒
+                </div>
+
+                <h3>Student Backpack</h3>
+
+                <p>
+                    Durable backpack for college students.
+                </p>
+
+                <h4>₹799</h4>
+
+                <button onclick="addToCart('Student Backpack', 799)">
+                    Add to Cart
+                </button>
+
+            </div>
+
+
+            <div class="product-card">
+
+                <div class="product-image">
+                    🎧
+                </div>
+
+                <h3>Wireless Headphones</h3>
+
+                <p>
+                    Comfortable headphones for study and entertainment.
+                </p>
+
+                <h4>₹1,299</h4>
+
+                <button onclick="addToCart('Wireless Headphones', 1299)">
+                    Add to Cart
+                </button>
+
+            </div>
+
+
+            <div class="product-card">
+
+                <div class="product-image">
+                    ⌨️
+                </div>
+
+                <h3>Student Keyboard</h3>
+
+                <p>
+                    Compact keyboard for coding and study.
+                </p>
+
+                <h4>₹999</h4>
+
+                <button onclick="addToCart('Student Keyboard', 999)">
+                    Add to Cart
+                </button>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- About Section -->
+    <section id="about" class="about-section">
+
+        <h2>About Us</h2>
+
+        <p>
+            Azure Student Store is a simple e-commerce platform
+            created to provide affordable and useful products
+            for students.
+        </p>
+
+    </section>
+
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact-section">
+
+        <h2>Contact Us</h2>
+
+        <p>Email: support@azurestudentstore.com</p>
+
+        <p>We are here to help students shop better.</p>
+
+    </section>
+
+
+    <!-- Footer -->
+    <footer>
+
+        <p>
+            © 2026 Azure Student Store. All Rights Reserved.
+        </p>
+
+    </footer>
+
+
+    <script src="script.js"></script>
+
+</body>
+</html>
