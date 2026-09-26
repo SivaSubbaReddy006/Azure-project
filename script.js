@@ -25,8 +25,10 @@ function updateCart() {
 
     // Update cart count
     if (cartCount) {
-        cartCount.textContent = cart.length;
-    }
+cartCount.textContent = cart.reduce(
+    (total, item) => total + item.quantity,
+    0
+);    }
 
     // Display cart items
     if (cartItems) {
