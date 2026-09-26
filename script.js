@@ -138,7 +138,11 @@ function checkout() {
 }
 
 
-function placeOrder() {
+function placeOrder(event) {
+
+    if (event) {
+        event.preventDefault();
+    }
 
     if (cart.length === 0) {
         alert("Your cart is empty!");
