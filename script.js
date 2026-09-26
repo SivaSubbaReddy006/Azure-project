@@ -123,12 +123,14 @@ function checkout() {
     }
     
 const order = {
+    id: "ORD-" + Date.now(),
     customer: name,
     phone: phone,
     address: address,
     items: cart,
     total: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    date: new Date().toLocaleString()
+    date: new Date().toLocaleString(),
+    status: "Order Placed"
 };
 
 const orders = JSON.parse(localStorage.getItem("orders")) || [];
@@ -195,8 +197,12 @@ function displayOrders() {
         orderCard.className = "order-card";
 
         orderCard.innerHTML = `
-            <h3>Order #${index + 1}</h3>
+<h3>Order #${index + 1}</h3>
 
+<p>
+    <strong>Order ID:</strong>
+    ${order.id || "ORD-" + (index + 1)}
+</p>
             <p>
                 <strong>Customer:</strong>
                 ${order.customer}
@@ -227,8 +233,8 @@ function displayOrders() {
             </p>
 
             <p>
-                <strong>Status:</strong>
-                Order Placed ✅
+               <strong>Status:</strong>
+                ${order.status || "Order Placed"} ✅
             </p>
         `;
 
