@@ -65,6 +65,14 @@ itemElement.innerHTML = `
             if (cartTotal) {
                 cartTotal.textContent = total;
             }
+            if (!document.getElementById("checkout-button")) {
+    const checkoutButton = document.createElement("button");
+    checkoutButton.id = "checkout-button";
+    checkoutButton.textContent = "Checkout";
+    checkoutButton.onclick = checkout;
+
+    cartItems.appendChild(checkoutButton);
+}
         }
     }
 }
@@ -83,4 +91,35 @@ function decreaseQuantity(index) {
         cart[index].quantity--;
         updateCart();
     }
+}
+function checkout() {
+    if (cart.length === 0) {
+        alert("Your cart is empty!");
+        return;
+    }
+
+    let name = prompt("Enter your name:");
+
+    if (!name) {
+        return;
+    }
+
+    let phone = prompt("Enter your phone number:");
+
+    if (!phone) {
+        return;
+    }
+
+    let address = prompt("Enter your delivery address:");
+
+    if (!address) {
+        return;
+    }
+
+    alert(
+        "Order placed successfully!\n\n" +
+        "Customer: " + name + "\n" +
+        "Phone: " + phone + "\n" +
+        "Address: " + address
+    );
 }
