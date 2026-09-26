@@ -5,6 +5,11 @@ const path = require("path");
 const PORT = process.env.PORT || 8080;
 
 const server = http.createServer((req, res) => {
+      if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "healthy" }));
+    return;
+  }
     let filePath = req.url === "/"
         ? path.join(__dirname, "index.html")
         : path.join(__dirname, req.url);
