@@ -3,7 +3,8 @@ let cart = [];
 function addToCart(name, price) {
     cart.push({
         name: name,
-        price: price
+        price: price,
+        quantity: 1
     });
 
     updateCart();
@@ -36,19 +37,27 @@ function updateCart() {
 
             cart.forEach((item, index) => {
 
-                total += item.price;
-
+total += item.price * item.quantity;
                 const itemElement = document.createElement("div");
+itemElement.innerHTML = `
+    <p>
+        <strong>${item.name}</strong>
+        - ₹${item.price}
 
-                itemElement.innerHTML = `
-                    <p>
-                        <strong>${item.name}</strong>
-                        - ₹${item.price}
-                        <button onclick="removeFromCart(${index})">
-                            Remove
-                        </button>
-                    </p>
-                `;
+        <br>
+
+        Quantity:
+        <button onclick="decreaseQuantity(${index})">−</button>
+        ${item.quantity}
+        <button onclick="increaseQuantity(${index})">+</button>
+
+        <br><br>
+
+        <button onclick="removeFromCart(${index})">
+            Remove
+        </button>
+    </p>
+`;
 
                 cartItems.appendChild(itemElement);
             });
@@ -63,4 +72,15 @@ function updateCart() {
 function removeFromCart(index) {
     cart.splice(index, 1);
     updateCart();
+}
+function increaseQuantity(index) {
+    cart[index].quantity++;
+    updateCart();
+}
+
+function decreaseQuantity(index) {
+    if (cart[index].quantity > 1) {
+        cart[index].quantity--;
+        updateCart();
+    }
 }
