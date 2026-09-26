@@ -260,6 +260,5 @@ function clearOrders() {
     displayOrders();
 }
 
-displayOrders();
 // Load orders when the page opens
 displayOrders();
