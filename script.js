@@ -157,44 +157,83 @@ function displayOrders() {
         return;
     }
 
-    const savedOrder = localStorage.getItem("latestOrder");
+    let orders = JSON.parse(localStorage.getItem("orders")) || [];
 
-    if (!savedOrder) {
+    // Support the previously saved latest order
+    if (orders.length === 0) {
+        const oldOrder = localStorage.getItem("latestOrder");
+
+        if (oldOrder) {
+            orders = [JSON.parse(oldOrder)];
+            localStorage.setItem("orders", JSON.stringify(orders));
+        }
+    }
+
+    // No orders
+    if (orders.length === 0) {
         ordersContainer.innerHTML = "<p>No orders placed yet.</p>";
         return;
     }
 
-    const order = JSON.parse(savedOrder);
+    ordersContainer.innerHTML = "";
 
-    let itemsHTML = "";
+    orders.forEach((order, index) => {
+        let itemsHTML = "";
 
-    order.items.forEach(item => {
-        itemsHTML += `
+        order.items.forEach(item => {
+            itemsHTML += `
+                <p>
+                    <strong>${item.name}</strong>
+                    - ₹${item.price}
+                    × ${item.quantity}
+                </p>
+            `;
+        });
+
+        const orderCard = document.createElement("div");
+
+        orderCard.className = "order-card";
+
+        orderCard.innerHTML = `
+            <h3>Order #${index + 1}</h3>
+
             <p>
-                <strong>${item.name}</strong>
-                - ₹${item.price}
-                × ${item.quantity}
+                <strong>Customer:</strong>
+                ${order.customer}
             </p>
-        `;
-    });
 
-    ordersContainer.innerHTML = `
-        <div class="order-card">
-            <h3>Order Details</h3>
+            <p>
+                <strong>Phone:</strong>
+                ${order.phone}
+            </p>
 
-            <p><strong>Customer:</strong> ${order.customer}</p>
-            <p><strong>Phone:</strong> ${order.phone}</p>
-            <p><strong>Address:</strong> ${order.address}</p>
+            <p>
+                <strong>Address:</strong>
+                ${order.address}
+            </p>
 
             <h4>Products:</h4>
+
             ${itemsHTML}
 
-            <p><strong>Total:</strong> ₹${order.total}</p>
-            <p><strong>Order Date:</strong> ${order.date}</p>
+            <p>
+                <strong>Total:</strong>
+                ₹${order.total}
+            </p>
 
-            <p><strong>Status:</strong> Order Placed ✅</p>
-        </div>
-    `;
+            <p>
+                <strong>Order Date:</strong>
+                ${order.date}
+            </p>
+
+            <p>
+                <strong>Status:</strong>
+                Order Placed ✅
+            </p>
+        `;
+
+        ordersContainer.appendChild(orderCard);
+    });
 }
 
 // Load orders when the page opens
