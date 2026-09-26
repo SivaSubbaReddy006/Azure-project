@@ -264,3 +264,31 @@ function clearOrders() {
 
 // Load orders when the page opens
 displayOrders();
+
+
+function searchProducts() {
+    const searchInput = document.getElementById("product-search");
+
+    if (!searchInput) {
+        return;
+    }
+
+    const searchText = searchInput.value.toLowerCase().trim();
+    const productCards = document.querySelectorAll(".product-card");
+
+    productCards.forEach(card => {
+        const productName = card.querySelector("h3");
+
+        if (!productName) {
+            return;
+        }
+
+        const name = productName.textContent.toLowerCase();
+
+        if (name.includes(searchText)) {
+            card.style.display = "";
+        } else {
+            card.style.display = "none";
+        }
+    });
+}
