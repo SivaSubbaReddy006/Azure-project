@@ -1,0 +1,8 @@
+{
+  "name": "azure-student-store",
+  "version": "1.0.0",
+  "description": "Azure Student Store",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
