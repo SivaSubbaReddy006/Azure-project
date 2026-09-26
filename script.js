@@ -131,8 +131,12 @@ const order = {
     date: new Date().toLocaleString()
 };
 
-localStorage.setItem("latestOrder", JSON.stringify(order));
-    cart = [];
+const orders = JSON.parse(localStorage.getItem("orders")) || [];
+
+orders.push(order);
+
+localStorage.setItem("orders", JSON.stringify(orders));
+localStorage.setItem("latestOrder", JSON.stringify(order));    cart = [];
 updateCart();
     alert(
         "Order placed successfully!\n\n" +
