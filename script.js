@@ -115,11 +115,22 @@ function checkout() {
     if (!address) {
         return;
     }
+    
+const order = {
+    customer: name,
+    phone: phone,
+    address: address,
+    items: cart,
+    total: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    date: new Date().toLocaleString()
+};
 
+localStorage.setItem("latestOrder", JSON.stringify(order));
     alert(
         "Order placed successfully!\n\n" +
         "Customer: " + name + "\n" +
         "Phone: " + phone + "\n" +
         "Address: " + address
     );
+    
 }
