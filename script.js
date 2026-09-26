@@ -134,3 +134,56 @@ localStorage.setItem("latestOrder", JSON.stringify(order));
     );
     
 }
+
+
+
+// Display latest order
+function displayOrders() {
+    const ordersContainer = document.getElementById("orders-container");
+
+    if (!ordersContainer) {
+        return;
+    }
+
+    const savedOrder = localStorage.getItem("latestOrder");
+
+    if (!savedOrder) {
+        ordersContainer.innerHTML = "<p>No orders placed yet.</p>";
+        return;
+    }
+
+    const order = JSON.parse(savedOrder);
+
+    let itemsHTML = "";
+
+    order.items.forEach(item => {
+        itemsHTML += `
+            <p>
+                <strong>${item.name}</strong>
+                - ₹${item.price}
+                × ${item.quantity}
+            </p>
+        `;
+    });
+
+    ordersContainer.innerHTML = `
+        <div class="order-card">
+            <h3>Order Details</h3>
+
+            <p><strong>Customer:</strong> ${order.customer}</p>
+            <p><strong>Phone:</strong> ${order.phone}</p>
+            <p><strong>Address:</strong> ${order.address}</p>
+
+            <h4>Products:</h4>
+            ${itemsHTML}
+
+            <p><strong>Total:</strong> ₹${order.total}</p>
+            <p><strong>Order Date:</strong> ${order.date}</p>
+
+            <p><strong>Status:</strong> Order Placed ✅</p>
+        </div>
+    `;
+}
+
+// Load orders when the page opens
+displayOrders();
