@@ -121,79 +121,73 @@ function checkout() {
 }
 
 
-const checkoutForm = document.getElementById("checkout-form");
+function placeOrder() {
 
-if (checkoutForm) {
-    checkoutForm.addEventListener("submit", function(event) {
-        event.preventDefault();
+    if (cart.length === 0) {
+        alert("Your cart is empty!");
+        return;
+    }
 
-        if (cart.length === 0) {
-            alert("Your cart is empty!");
-            return;
-        }
+    const name = document.getElementById("customer-name").value.trim();
+    const phone = document.getElementById("customer-phone").value.trim();
+    const address = document.getElementById("customer-address").value.trim();
 
-        const name = document.getElementById("customer-name").value.trim();
-        const phone = document.getElementById("customer-phone").value.trim();
-        const address = document.getElementById("customer-address").value.trim();
+    if (!name || !phone || !address) {
+        alert("Please fill in all the details.");
+        return;
+    }
 
-        if (!name || !phone || !address) {
-            alert("Please fill in all the details.");
-            return;
-        }
+    if (!/^[0-9]{10}$/.test(phone)) {
+        alert("Please enter a valid 10-digit phone number.");
+        return;
+    }
 
-        if (!/^[0-9]{10}$/.test(phone)) {
-            alert("Please enter a valid 10-digit phone number.");
-            return;
-        }
+    const order = {
+        id: "ORD-" + Date.now(),
+        customer: name,
+        phone: phone,
+        address: address,
+        items: cart.map(item => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity
+        })),
+        total: cart.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0
+        ),
+        date: new Date().toLocaleString(),
+        status: "Order Placed"
+    };
 
-        const order = {
-            id: "ORD-" + Date.now(),
-            customer: name,
-            phone: phone,
-            address: address,
-            items: cart.map(item => ({
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity
-            })),
-            total: cart.reduce(
-                (sum, item) => sum + item.price * item.quantity,
-                0
-            ),
-            date: new Date().toLocaleString(),
-            status: "Order Placed"
-        };
+    const orders =
+        JSON.parse(localStorage.getItem("orders")) || [];
 
-        const orders =
-            JSON.parse(localStorage.getItem("orders")) || [];
+    orders.push(order);
 
-        orders.push(order);
+    localStorage.setItem(
+        "orders",
+        JSON.stringify(orders)
+    );
 
-        localStorage.setItem(
-            "orders",
-            JSON.stringify(orders)
-        );
+    localStorage.setItem(
+        "latestOrder",
+        JSON.stringify(order)
+    );
 
-        localStorage.setItem(
-            "latestOrder",
-            JSON.stringify(order)
-        );
+    cart = [];
 
-        cart = [];
+    updateCart();
 
-        updateCart();
+    document.getElementById("checkout-form").reset();
 
-        checkoutForm.reset();
+    alert(
+        "Order placed successfully!\n\n" +
+        "Order ID: " + order.id
+    );
 
-        alert(
-            "Order placed successfully!\n\n" +
-            "Order ID: " + order.id
-        );
-
-        displayOrders();
-    });
+    displayOrders();
 }
-
 
 // Display latest order
 function displayOrders() {
