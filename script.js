@@ -25,8 +25,10 @@ function updateCart() {
     if (cartItems) {
 
         if (cart.length === 0) {
-            cartItems.innerHTML = "<p>Your cart is empty.</p>";
-        } else {
+    cartItems.innerHTML = "<p>Your cart is empty.</p>";
+    cartTotal.textContent = 0;
+    return;
+}else {
 
             cartItems.innerHTML = "";
 
