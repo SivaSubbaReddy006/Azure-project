@@ -132,6 +132,8 @@ const order = {
 };
 
 localStorage.setItem("latestOrder", JSON.stringify(order));
+    cart = [];
+updateCart();
     alert(
         "Order placed successfully!\n\n" +
         "Customer: " + name + "\n" +
