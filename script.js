@@ -177,8 +177,12 @@ function displayOrders() {
         return;
     }
 
-    ordersContainer.innerHTML = "";
-
+ordersContainer.innerHTML = `
+    <div class="orders-header">
+        <h2>Order History</h2>
+        <button onclick="clearOrders()">Clear All Orders</button>
+    </div>
+`;
     orders.forEach((order, index) => {
         let itemsHTML = "";
 
@@ -241,6 +245,21 @@ function displayOrders() {
         ordersContainer.appendChild(orderCard);
     });
 }
+function clearOrders() {
+    const confirmed = confirm(
+        "Are you sure you want to delete all orders?"
+    );
 
+    if (!confirmed) {
+        return;
+    }
+
+    localStorage.removeItem("orders");
+    localStorage.removeItem("latestOrder");
+
+    displayOrders();
+}
+
+displayOrders();
 // Load orders when the page opens
 displayOrders();
