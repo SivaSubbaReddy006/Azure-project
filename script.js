@@ -25,19 +25,24 @@ function updateCart() {
 
     // Update cart count
     if (cartCount) {
-cartCount.textContent = cart.reduce(
-    (total, item) => total + item.quantity,
-    0
-);    }
+    cartCount.textContent = cart.reduce(
+        (total, item) => total + item.quantity,
+        0
+    );
+}
 
     // Display cart items
     if (cartItems) {
 
-        if (cart.length === 0) {
+      if (cart.length === 0) {
     cartItems.innerHTML = "<p>Your cart is empty.</p>";
-    cartTotal.textContent = 0;
+
+    if (cartTotal) {
+        cartTotal.textContent = 0;
+    }
+
     return;
-}else {
+} else {
 
             cartItems.innerHTML = "";
 
@@ -140,7 +145,9 @@ const orders = JSON.parse(localStorage.getItem("orders")) || [];
 orders.push(order);
 
 localStorage.setItem("orders", JSON.stringify(orders));
-localStorage.setItem("latestOrder", JSON.stringify(order));    cart = [];
+localStorage.setItem("latestOrder", JSON.stringify(order));
+
+cart = [];
 updateCart();
     alert(
         "Order placed successfully!\n\n" +
