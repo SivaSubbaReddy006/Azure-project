@@ -1,11 +1,17 @@
 let cart = [];
 
 function addToCart(name, price) {
-    cart.push({
-        name: name,
-        price: price,
-        quantity: 1
-    });
+    const existingItem = cart.find(item => item.name === name);
+
+    if (existingItem) {
+        existingItem.quantity++;
+    } else {
+        cart.push({
+            name: name,
+            price: price,
+            quantity: 1
+        });
+    }
 
     updateCart();
 
