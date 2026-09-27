@@ -3,72 +3,58 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const { BlobServiceClient } = require("@azure/storage-blob");
 const { DefaultAzureCredential } = require("@azure/identity");
+const { BlobServiceClient } = require("@azure/storage-blob");
 
 const PORT = process.env.PORT || 8080;
+
+// =====================================================
+// AZURE STORAGE CONFIGURATION
+// =====================================================
 
 const STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT_NAME;
 const CONTAINER_NAME =
     process.env.AZURE_STORAGE_CONTAINER || "storedata";
 
-let containerClient = null;
+if (!STORAGE_ACCOUNT) {
+    console.error("ERROR: AZURE_STORAGE_ACCOUNT_NAME is missing.");
+    process.exit(1);
+}
 
-function getContainerClient() {
-    if (containerClient) {
-        return containerClient;
+const credential = new DefaultAzureCredential();
+
+const storageUrl =
+    `https://${STORAGE_ACCOUNT}.blob.core.windows.net`;
+
+const blobServiceClient =
+    new BlobServiceClient(storageUrl, credential);
+
+const containerClient =
+    blobServiceClient.getContainerClient(CONTAINER_NAME);
+
+
+// =====================================================
+// INITIALIZE AZURE STORAGE
+// =====================================================
+
+async function initializeStorage() {
+    try {
+        await containerClient.createIfNotExists();
+
+        console.log(
+            `Azure Storage connected: ${STORAGE_ACCOUNT}/${CONTAINER_NAME}`
+        );
+    } catch (error) {
+        console.error("Azure Storage connection failed:");
+        console.error(error.message);
+        process.exit(1);
     }
-
-    if (!STORAGE_ACCOUNT) {
-        throw new Error("AZURE_STORAGE_ACCOUNT_NAME is missing");
-    }
-
-    const accountUrl =
-        `https://${STORAGE_ACCOUNT}.blob.core.windows.net`;
-
-    const credential = new DefaultAzureCredential();
-
-    const blobServiceClient =
-        new BlobServiceClient(accountUrl, credential);
-
-    containerClient =
-        blobServiceClient.getContainerClient(CONTAINER_NAME);
-
-    return containerClient;
 }
 
-// --------------------------------------------------
-// HELPERS
-// --------------------------------------------------
 
-function sendJSON(res, status, data) {
-    res.writeHead(status, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-    });
-
-    res.end(JSON.stringify(data));
-}
-
-function readBody(req) {
-    return new Promise((resolve, reject) => {
-        let body = "";
-
-        req.on("data", chunk => {
-            body += chunk;
-        });
-
-        req.on("end", () => {
-            try {
-                resolve(body ? JSON.parse(body) : {});
-            } catch (error) {
-                reject(error);
-            }
-        });
-
-        req.on("error", reject);
-    });
-}
+// =====================================================
+// PASSWORD HASHING
+// =====================================================
 
 function hashPassword(password) {
     return crypto
@@ -77,30 +63,50 @@ function hashPassword(password) {
         .digest("hex");
 }
 
-function safeUsername(username) {
-    return String(username)
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]/g, "_");
+
+// =====================================================
+// READ REQUEST BODY
+// =====================================================
+
+function readBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = "";
+
+        req.on("data", chunk => {
+            body += chunk.toString();
+        });
+
+        req.on("end", () => {
+            if (!body) {
+                resolve({});
+                return;
+            }
+
+            try {
+                resolve(JSON.parse(body));
+            } catch (error) {
+                reject(new Error("Invalid JSON"));
+            }
+        });
+
+        req.on("error", reject);
+    });
 }
 
-// --------------------------------------------------
-// AZURE STORAGE
-// --------------------------------------------------
 
-async function saveJSON(blobName, data) {
-    const container = getContainerClient();
+// =====================================================
+// AZURE BLOB HELPERS
+// =====================================================
 
-    await container.createIfNotExists();
-
+async function saveJson(blobName, data) {
     const blockBlobClient =
-        container.getBlockBlobClient(blobName);
+        containerClient.getBlockBlobClient(blobName);
 
-    const content = JSON.stringify(data, null, 2);
+    const jsonData = JSON.stringify(data, null, 2);
 
     await blockBlobClient.upload(
-        content,
-        Buffer.byteLength(content),
+        jsonData,
+        Buffer.byteLength(jsonData),
         {
             overwrite: true,
             blobHTTPHeaders: {
@@ -110,289 +116,317 @@ async function saveJSON(blobName, data) {
     );
 }
 
-async function getJSON(blobName) {
-    const container = getContainerClient();
 
-    const blockBlobClient =
-        container.getBlockBlobClient(blobName);
+async function getJson(blobName) {
+    const blobClient =
+        containerClient.getBlobClient(blobName);
 
     try {
-        const download =
-            await blockBlobClient.download();
+        const exists = await blobClient.exists();
 
-        const chunks = [];
-
-        for await (const chunk of download.readableStreamBody) {
-            chunks.push(chunk);
-        }
-
-        return JSON.parse(
-            Buffer.concat(chunks).toString()
-        );
-
-    } catch (error) {
-        if (error.statusCode === 404) {
+        if (!exists) {
             return null;
         }
 
-        throw error;
-    }
-}
+        const downloaded =
+            await blobClient.downloadToBuffer();
 
-// --------------------------------------------------
-// REGISTER
-// --------------------------------------------------
-
-async function registerUser(req, res) {
-    try {
-        const body = await readBody(req);
-
-        const username = safeUsername(body.username);
-        const password = String(body.password || "");
-
-        if (!username || !password) {
-            return sendJSON(res, 400, {
-                success: false,
-                message: "Username and password are required"
-            });
-        }
-
-        const blobName = `users/${username}.json`;
-
-        const existingUser =
-            await getJSON(blobName);
-
-        if (existingUser) {
-            return sendJSON(res, 409, {
-                success: false,
-                message: "User already exists"
-            });
-        }
-
-        const user = {
-            username,
-            passwordHash: hashPassword(password),
-            createdAt: new Date().toISOString()
-        };
-
-        await saveJSON(blobName, user);
-
-        sendJSON(res, 201, {
-            success: true,
-            message: "Registration successful"
-        });
-
+        return JSON.parse(downloaded.toString());
     } catch (error) {
-        console.error("REGISTER ERROR:", error);
-
-        sendJSON(res, 500, {
-            success: false,
-            message: "Unable to register user"
-        });
+        console.error(`Error reading ${blobName}:`, error.message);
+        return null;
     }
 }
 
-// --------------------------------------------------
-// LOGIN
-// --------------------------------------------------
 
-async function loginUser(req, res) {
-    try {
-        const body = await readBody(req);
+// =====================================================
+// API RESPONSE HELPER
+// =====================================================
 
-        const username = safeUsername(body.username);
-        const password = String(body.password || "");
-
-        if (!username || !password) {
-            return sendJSON(res, 400, {
-                success: false,
-                message: "Username and password are required"
-            });
-        }
-
-        const blobName = `users/${username}.json`;
-
-        const user =
-            await getJSON(blobName);
-
-        if (!user) {
-            return sendJSON(res, 401, {
-                success: false,
-                message: "Wrong credentials"
-            });
-        }
-
-        const passwordHash =
-            hashPassword(password);
-
-        if (passwordHash !== user.passwordHash) {
-            return sendJSON(res, 401, {
-                success: false,
-                message: "Wrong credentials"
-            });
-        }
-
-        sendJSON(res, 200, {
-            success: true,
-            message: "Login successful",
-            username: user.username
-        });
-
-    } catch (error) {
-        console.error("LOGIN ERROR:", error);
-
-        sendJSON(res, 500, {
-            success: false,
-            message: "Unable to login"
-        });
-    }
-}
-
-// --------------------------------------------------
-// ORDER
-// --------------------------------------------------
-
-async function saveOrder(req, res) {
-    try {
-        const body = await readBody(req);
-
-        const username =
-            safeUsername(body.username || "guest");
-
-        const orderId =
-            `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-
-        const order = {
-            orderId,
-            username,
-            items: body.items || [],
-            total: body.total || 0,
-            createdAt: new Date().toISOString()
-        };
-
-        await saveJSON(
-            `orders/${orderId}.json`,
-            order
-        );
-
-        sendJSON(res, 201, {
-            success: true,
-            message: "Order stored successfully",
-            orderId
-        });
-
-    } catch (error) {
-        console.error("ORDER ERROR:", error);
-
-        sendJSON(res, 500, {
-            success: false,
-            message: "Unable to store order"
-        });
-    }
-}
-
-// --------------------------------------------------
-// API ROUTER
-// --------------------------------------------------
-
-async function handleAPI(req, res) {
-
-    if (req.method === "POST" &&
-        req.url === "/api/register") {
-
-        return registerUser(req, res);
-    }
-
-    if (req.method === "POST" &&
-        req.url === "/api/login") {
-
-        return loginUser(req, res);
-    }
-
-    if (req.method === "POST" &&
-        req.url === "/api/orders") {
-
-        return saveOrder(req, res);
-    }
-
-    if (req.method === "GET" &&
-        req.url === "/api/storage-test") {
-
-        try {
-            const container = getContainerClient();
-
-            await container.createIfNotExists();
-
-            await saveJSON(
-                "system/test.json",
-                {
-                    status: "connected",
-                    time: new Date().toISOString()
-                }
-            );
-
-            return sendJSON(res, 200, {
-                success: true,
-                message: "Azure Storage connection successful"
-            });
-
-        } catch (error) {
-            console.error(error);
-
-            return sendJSON(res, 500, {
-                success: false,
-                message: "Azure Storage connection failed"
-            });
-        }
-    }
-
-    return sendJSON(res, 404, {
-        success: false,
-        message: "API route not found"
+function sendJson(res, statusCode, data) {
+    res.writeHead(statusCode, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
     });
+
+    res.end(JSON.stringify(data));
 }
 
-// --------------------------------------------------
+
+// =====================================================
 // SERVER
-// --------------------------------------------------
+// =====================================================
 
 const server = http.createServer(async (req, res) => {
 
-    // Health check
-    if (req.url === "/health") {
+    // -------------------------------------------------
+    // CORS PREFLIGHT
+    // -------------------------------------------------
 
-        return sendJSON(res, 200, {
-            status: "healthy"
+    if (req.method === "OPTIONS") {
+        res.writeHead(204, {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
         });
+
+        res.end();
+        return;
     }
 
-    // API
-    if (req.url.startsWith("/api/")) {
 
-        return handleAPI(req, res);
+    // -------------------------------------------------
+    // HEALTH CHECK
+    // -------------------------------------------------
+
+    if (req.url === "/health") {
+        sendJson(res, 200, {
+            status: "healthy",
+            storage: "configured",
+            container: CONTAINER_NAME
+        });
+
+        return;
     }
 
-    // Static files
+
+    // -------------------------------------------------
+    // REGISTER USER
+    // -------------------------------------------------
+
+    if (req.url === "/api/register" && req.method === "POST") {
+
+        try {
+            const body = await readBody(req);
+
+            const username =
+                body.username ||
+                body.userName ||
+                body.name;
+
+            const password = body.password;
+
+            if (!username || !password) {
+                sendJson(res, 400, {
+                    success: false,
+                    message: "Username and password are required."
+                });
+
+                return;
+            }
+
+            const safeUsername =
+                String(username)
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]/g, "_");
+
+            const blobName =
+                `users/${safeUsername}.json`;
+
+            const existingUser =
+                await getJson(blobName);
+
+            if (existingUser) {
+                sendJson(res, 409, {
+                    success: false,
+                    message: "User already exists."
+                });
+
+                return;
+            }
+
+            const user = {
+                username: username,
+                passwordHash: hashPassword(password),
+                createdAt: new Date().toISOString()
+            };
+
+            await saveJson(blobName, user);
+
+            sendJson(res, 201, {
+                success: true,
+                message: "Registration successful."
+            });
+
+        } catch (error) {
+            console.error("Register error:", error);
+
+            sendJson(res, 500, {
+                success: false,
+                message: "Registration failed."
+            });
+        }
+
+        return;
+    }
+
+
+    // -------------------------------------------------
+    // LOGIN
+    // -------------------------------------------------
+
+    if (req.url === "/api/login" && req.method === "POST") {
+
+        try {
+            const body = await readBody(req);
+
+            const username =
+                body.username ||
+                body.userName ||
+                body.name;
+
+            const password = body.password;
+
+            if (!username || !password) {
+                sendJson(res, 400, {
+                    success: false,
+                    message: "Username and password are required."
+                });
+
+                return;
+            }
+
+            const safeUsername =
+                String(username)
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]/g, "_");
+
+            const blobName =
+                `users/${safeUsername}.json`;
+
+            const user =
+                await getJson(blobName);
+
+            if (!user) {
+                sendJson(res, 401, {
+                    success: false,
+                    message: "Wrong credentials."
+                });
+
+                return;
+            }
+
+            const passwordHash =
+                hashPassword(password);
+
+            if (passwordHash !== user.passwordHash) {
+                sendJson(res, 401, {
+                    success: false,
+                    message: "Wrong credentials."
+                });
+
+                return;
+            }
+
+            sendJson(res, 200, {
+                success: true,
+                message: "Login successful.",
+                username: user.username
+            });
+
+        } catch (error) {
+            console.error("Login error:", error);
+
+            sendJson(res, 500, {
+                success: false,
+                message: "Login failed."
+            });
+        }
+
+        return;
+    }
+
+
+    // -------------------------------------------------
+    // CREATE ORDER
+    // -------------------------------------------------
+
+    if (req.url === "/api/orders" && req.method === "POST") {
+
+        try {
+            const orderData = await readBody(req);
+
+            const orderId =
+                `ORD-${Date.now()}-${crypto
+                    .randomBytes(3)
+                    .toString("hex")}`;
+
+            const order = {
+                orderId: orderId,
+                ...orderData,
+                createdAt: new Date().toISOString()
+            };
+
+            await saveJson(
+                `orders/${orderId}.json`,
+                order
+            );
+
+            sendJson(res, 201, {
+                success: true,
+                message: "Order saved successfully.",
+                orderId: orderId
+            });
+
+        } catch (error) {
+            console.error("Order error:", error);
+
+            sendJson(res, 500, {
+                success: false,
+                message: "Order could not be saved."
+            });
+        }
+
+        return;
+    }
+
+
+    // -------------------------------------------------
+    // STATIC WEBSITE FILES
+    // -------------------------------------------------
+
     let requestedPath =
         req.url === "/"
             ? "index.html"
-            : req.url.split("?")[0].replace(/^\/+/, "");
+            : req.url.split("?")[0];
+
+    try {
+        requestedPath =
+            decodeURIComponent(requestedPath);
+    } catch {
+        res.writeHead(400);
+        res.end("Bad Request");
+        return;
+    }
+
+    // Prevent path traversal
+    if (
+        requestedPath.includes("..") ||
+        requestedPath.includes("\0")
+    ) {
+        res.writeHead(400);
+        res.end("Bad Request");
+        return;
+    }
 
     const filePath =
         path.join(__dirname, requestedPath);
 
-    // Security check
-    if (!filePath.startsWith(__dirname)) {
-        res.writeHead(403);
-        return res.end("403 - Forbidden");
-    }
-
     if (!fs.existsSync(filePath)) {
-        res.writeHead(404);
-        return res.end("404 - File Not Found");
+        res.writeHead(404, {
+            "Content-Type": "text/plain"
+        });
+
+        res.end("404 - File Not Found");
+        return;
     }
 
-    const ext = path.extname(filePath);
+    const ext =
+        path.extname(filePath).toLowerCase();
 
     const contentTypes = {
         ".html": "text/html",
@@ -402,8 +436,10 @@ const server = http.createServer(async (req, res) => {
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
         ".svg": "image/svg+xml",
-        ".ico": "image/x-icon"
+        ".ico": "image/x-icon",
+        ".webp": "image/webp"
     };
 
     res.writeHead(200, {
@@ -415,6 +451,19 @@ const server = http.createServer(async (req, res) => {
     fs.createReadStream(filePath).pipe(res);
 });
 
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+
+// =====================================================
+// START SERVER
+// =====================================================
+
+async function startServer() {
+    await initializeStorage();
+
+    server.listen(PORT, () => {
+        console.log(
+            `Server running on port ${PORT}`
+        );
+    });
+}
+
+startServer();
