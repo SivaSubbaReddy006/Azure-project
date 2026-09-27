@@ -6,3 +6,10 @@
     "start": "node server.js"
   }
 }
+
+{
+  "dependencies": {
+    "@azure/identity": "^4.10.0",
+    "@azure/storage-blob": "^12.28.0"
+  }
+}
