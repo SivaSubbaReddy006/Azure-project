@@ -3,194 +3,55 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const {
-    BlobServiceClient
-} = require("@azure/storage-blob");
-
-const {
-    DefaultAzureCredential
-} = require("@azure/identity");
+const { BlobServiceClient } = require("@azure/storage-blob");
+const { DefaultAzureCredential } = require("@azure/identity");
 
 const PORT = process.env.PORT || 8080;
 
-const STORAGE_ACCOUNT =
-    process.env.AZURE_STORAGE_ACCOUNT_NAME || "azstudentstore2026";
-
+const STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT_NAME;
 const CONTAINER_NAME =
     process.env.AZURE_STORAGE_CONTAINER || "storedata";
 
-const ADMIN_SETUP_KEY =
-    process.env.ADMIN_SETUP_KEY || "admin2026";
+let containerClient = null;
 
-const APP_SECRET =
-    process.env.APP_SECRET || "change-this-secret";
+function getContainerClient() {
+    if (containerClient) {
+        return containerClient;
+    }
 
+    if (!STORAGE_ACCOUNT) {
+        throw new Error("AZURE_STORAGE_ACCOUNT_NAME is missing");
+    }
 
-// ======================================================
-// AZURE STORAGE CONNECTION
-// ======================================================
+    const accountUrl =
+        `https://${STORAGE_ACCOUNT}.blob.core.windows.net`;
 
-let blobServiceClient;
-
-if (process.env.AZURE_STORAGE_CONNECTION_STRING) {
-
-    // Fast/demo option using App Service Application Setting
-    blobServiceClient =
-        BlobServiceClient.fromConnectionString(
-            process.env.AZURE_STORAGE_CONNECTION_STRING
-        );
-
-} else {
-
-    // Recommended Azure passwordless authentication
     const credential = new DefaultAzureCredential();
 
-    blobServiceClient = new BlobServiceClient(
-        `https://${STORAGE_ACCOUNT}.blob.core.windows.net`,
-        credential
-    );
+    const blobServiceClient =
+        new BlobServiceClient(accountUrl, credential);
+
+    containerClient =
+        blobServiceClient.getContainerClient(CONTAINER_NAME);
+
+    return containerClient;
 }
 
-const containerClient =
-    blobServiceClient.getContainerClient(CONTAINER_NAME);
+// --------------------------------------------------
+// HELPERS
+// --------------------------------------------------
 
-
-// ======================================================
-// STARTUP
-// ======================================================
-
-async function initializeAzureStorage() {
-
-    await containerClient.createIfNotExists();
-
-    console.log(
-        `Azure Storage connected: ${STORAGE_ACCOUNT}/${CONTAINER_NAME}`
-    );
-}
-
-
-// ======================================================
-// PASSWORD SECURITY
-// ======================================================
-
-function hashPassword(password) {
-
-    const salt = crypto.randomBytes(16).toString("hex");
-
-    const hash = crypto
-        .scryptSync(password, salt, 64)
-        .toString("hex");
-
-    return `${salt}:${hash}`;
-}
-
-
-function verifyPassword(password, storedPassword) {
-
-    try {
-
-        const [salt, storedHash] =
-            storedPassword.split(":");
-
-        const hash =
-            crypto
-                .scryptSync(password, salt, 64)
-                .toString("hex");
-
-        return crypto.timingSafeEqual(
-            Buffer.from(hash, "hex"),
-            Buffer.from(storedHash, "hex")
-        );
-
-    } catch (error) {
-
-        return false;
-    }
-}
-
-
-// ======================================================
-// TOKEN SYSTEM
-// ======================================================
-
-function createToken(username, role) {
-
-    const payload = {
-        username,
-        role,
-        exp: Date.now() + (24 * 60 * 60 * 1000)
-    };
-
-    const data =
-        Buffer.from(JSON.stringify(payload))
-            .toString("base64url");
-
-    const signature =
-        crypto
-            .createHmac("sha256", APP_SECRET)
-            .update(data)
-            .digest("base64url");
-
-    return `${data}.${signature}`;
-}
-
-
-function verifyToken(token) {
-
-    try {
-
-        const [data, signature] =
-            token.split(".");
-
-        const expectedSignature =
-            crypto
-                .createHmac("sha256", APP_SECRET)
-                .update(data)
-                .digest("base64url");
-
-        if (signature !== expectedSignature) {
-            return null;
-        }
-
-        const payload =
-            JSON.parse(
-                Buffer.from(data, "base64url").toString()
-            );
-
-        if (payload.exp < Date.now()) {
-            return null;
-        }
-
-        return payload;
-
-    } catch (error) {
-
-        return null;
-    }
-}
-
-
-// ======================================================
-// REQUEST HELPERS
-// ======================================================
-
-function sendJSON(res, statusCode, data) {
-
-    res.writeHead(statusCode, {
+function sendJSON(res, status, data) {
+    res.writeHead(status, {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+        "Access-Control-Allow-Origin": "*"
     });
 
     res.end(JSON.stringify(data));
 }
 
-
-function getRequestBody(req) {
-
+function readBody(req) {
     return new Promise((resolve, reject) => {
-
         let body = "";
 
         req.on("data", chunk => {
@@ -198,66 +59,48 @@ function getRequestBody(req) {
         });
 
         req.on("end", () => {
-
-            if (!body) {
-                resolve({});
-                return;
-            }
-
             try {
-
-                resolve(JSON.parse(body));
-
+                resolve(body ? JSON.parse(body) : {});
             } catch (error) {
-
-                reject(new Error("Invalid JSON"));
-
+                reject(error);
             }
-
         });
 
         req.on("error", reject);
     });
 }
 
-
-function getAuthenticatedUser(req) {
-
-    const authHeader =
-        req.headers.authorization || "";
-
-    if (!authHeader.startsWith("Bearer ")) {
-        return null;
-    }
-
-    const token =
-        authHeader.substring(7);
-
-    return verifyToken(token);
+function hashPassword(password) {
+    return crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex");
 }
 
-
-// ======================================================
-// AZURE BLOB HELPERS
-// ======================================================
-
-async function blobExists(blobName) {
-
-    const blobClient =
-        containerClient.getBlobClient(blobName);
-
-    return await blobClient.exists();
+function safeUsername(username) {
+    return String(username)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "_");
 }
 
+// --------------------------------------------------
+// AZURE STORAGE
+// --------------------------------------------------
 
-async function saveBlob(blobName, data) {
+async function saveJSON(blobName, data) {
+    const container = getContainerClient();
+
+    await container.createIfNotExists();
 
     const blockBlobClient =
-        containerClient.getBlockBlobClient(blobName);
+        container.getBlockBlobClient(blobName);
+
+    const content = JSON.stringify(data, null, 2);
 
     await blockBlobClient.upload(
-        JSON.stringify(data, null, 2),
-        Buffer.byteLength(JSON.stringify(data, null, 2)),
+        content,
+        Buffer.byteLength(content),
         {
             overwrite: true,
             blobHTTPHeaders: {
@@ -267,718 +110,311 @@ async function saveBlob(blobName, data) {
     );
 }
 
+async function getJSON(blobName) {
+    const container = getContainerClient();
 
-async function readBlob(blobName) {
+    const blockBlobClient =
+        container.getBlockBlobClient(blobName);
 
-    const blobClient =
-        containerClient.getBlobClient(blobName);
-
-    const download =
-        await blobClient.download();
-
-    const text =
-        await streamToString(download.readableStreamBody);
-
-    return JSON.parse(text);
-}
-
-
-async function streamToString(readable) {
-
-    return new Promise((resolve, reject) => {
+    try {
+        const download =
+            await blockBlobClient.download();
 
         const chunks = [];
 
-        readable.on("data", chunk => {
+        for await (const chunk of download.readableStreamBody) {
             chunks.push(chunk);
-        });
-
-        readable.on("end", () => {
-
-            resolve(
-                Buffer.concat(chunks).toString("utf8")
-            );
-
-        });
-
-        readable.on("error", reject);
-    });
-}
-
-
-async function listBlobs(prefix) {
-
-    const results = [];
-
-    for await (
-        const blob of containerClient.listBlobsFlat({
-            prefix
-        })
-    ) {
-
-        try {
-
-            const data =
-                await readBlob(blob.name);
-
-            results.push(data);
-
-        } catch (error) {
-
-            console.log(
-                "Could not read:",
-                blob.name
-            );
         }
-    }
 
-    return results;
-}
-
-
-// ======================================================
-// AUTHORIZATION
-// ======================================================
-
-function requireLogin(req, res) {
-
-    const user =
-        getAuthenticatedUser(req);
-
-    if (!user) {
-
-        sendJSON(res, 401, {
-            success: false,
-            message: "Please login first."
-        });
-
-        return null;
-    }
-
-    return user;
-}
-
-
-// ======================================================
-// API ROUTES
-// ======================================================
-
-async function handleAPI(req, res) {
-
-    const url =
-        new URL(
-            req.url,
-            `http://${req.headers.host}`
+        return JSON.parse(
+            Buffer.concat(chunks).toString()
         );
 
-    const pathname = url.pathname;
+    } catch (error) {
+        if (error.statusCode === 404) {
+            return null;
+        }
 
+        throw error;
+    }
+}
 
-    // ----------------------------------------------
-    // REGISTER
-    // ----------------------------------------------
+// --------------------------------------------------
+// REGISTER
+// --------------------------------------------------
 
-    if (
-        req.method === "POST" &&
-        pathname === "/api/register"
-    ) {
+async function registerUser(req, res) {
+    try {
+        const body = await readBody(req);
 
-        const body =
-            await getRequestBody(req);
-
-        const username =
-            String(body.username || "")
-                .trim()
-                .toLowerCase();
-
-        const password =
-            String(body.password || "");
-
-        const role =
-            String(body.role || "user")
-                .toLowerCase();
-
-        const adminKey =
-            String(body.adminKey || "");
-
+        const username = safeUsername(body.username);
+        const password = String(body.password || "");
 
         if (!username || !password) {
-
             return sendJSON(res, 400, {
                 success: false,
-                message: "Username and password are required."
+                message: "Username and password are required"
             });
         }
 
+        const blobName = `users/${username}.json`;
 
-        if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+        const existingUser =
+            await getJSON(blobName);
 
-            return sendJSON(res, 400, {
-                success: false,
-                message:
-                    "Username must contain 3-30 letters, numbers or underscore."
-            });
-        }
-
-
-        if (password.length < 4) {
-
-            return sendJSON(res, 400, {
-                success: false,
-                message:
-                    "Password must contain at least 4 characters."
-            });
-        }
-
-
-        // Admin account requires special setup key
-        if (role === "admin") {
-
-            if (adminKey !== ADMIN_SETUP_KEY) {
-
-                return sendJSON(res, 403, {
-                    success: false,
-                    message: "Invalid admin setup key."
-                });
-            }
-        }
-
-
-        const userBlob =
-            `users/${username}.json`;
-
-
-        if (await blobExists(userBlob)) {
-
+        if (existingUser) {
             return sendJSON(res, 409, {
                 success: false,
-                message: "Username already exists."
+                message: "User already exists"
             });
         }
-
 
         const user = {
-
             username,
-
-            passwordHash:
-                hashPassword(password),
-
-            role:
-                role === "admin"
-                    ? "admin"
-                    : "user",
-
-            createdAt:
-                new Date().toISOString()
+            passwordHash: hashPassword(password),
+            createdAt: new Date().toISOString()
         };
 
+        await saveJSON(blobName, user);
 
-        await saveBlob(userBlob, user);
-
-
-        return sendJSON(res, 201, {
-
+        sendJSON(res, 201, {
             success: true,
+            message: "Registration successful"
+        });
 
-            message:
-                "Account created successfully.",
+    } catch (error) {
+        console.error("REGISTER ERROR:", error);
 
-            username,
-
-            role: user.role
+        sendJSON(res, 500, {
+            success: false,
+            message: "Unable to register user"
         });
     }
+}
 
+// --------------------------------------------------
+// LOGIN
+// --------------------------------------------------
 
-    // ----------------------------------------------
-    // LOGIN
-    // ----------------------------------------------
+async function loginUser(req, res) {
+    try {
+        const body = await readBody(req);
 
-    if (
-        req.method === "POST" &&
-        pathname === "/api/login"
-    ) {
-
-        const body =
-            await getRequestBody(req);
-
-        const username =
-            String(body.username || "")
-                .trim()
-                .toLowerCase();
-
-        const password =
-            String(body.password || "");
-
+        const username = safeUsername(body.username);
+        const password = String(body.password || "");
 
         if (!username || !password) {
-
             return sendJSON(res, 400, {
-
                 success: false,
-
-                message:
-                    "Username and password are required."
+                message: "Username and password are required"
             });
         }
 
-
-        const userBlob =
-            `users/${username}.json`;
-
-
-        if (!await blobExists(userBlob)) {
-
-            return sendJSON(res, 401, {
-
-                success: false,
-
-                message:
-                    "Wrong credentials."
-            });
-        }
-
+        const blobName = `users/${username}.json`;
 
         const user =
-            await readBlob(userBlob);
+            await getJSON(blobName);
 
-
-        if (
-            !verifyPassword(
-                password,
-                user.passwordHash
-            )
-        ) {
-
+        if (!user) {
             return sendJSON(res, 401, {
-
                 success: false,
-
-                message:
-                    "Wrong credentials."
+                message: "Wrong credentials"
             });
         }
 
+        const passwordHash =
+            hashPassword(password);
 
-        const token =
-            createToken(
-                user.username,
-                user.role
-            );
+        if (passwordHash !== user.passwordHash) {
+            return sendJSON(res, 401, {
+                success: false,
+                message: "Wrong credentials"
+            });
+        }
 
-
-        return sendJSON(res, 200, {
-
+        sendJSON(res, 200, {
             success: true,
+            message: "Login successful",
+            username: user.username
+        });
 
-            message:
-                "Login successful.",
+    } catch (error) {
+        console.error("LOGIN ERROR:", error);
 
-            token,
-
-            user: {
-
-                username:
-                    user.username,
-
-                role:
-                    user.role
-            }
+        sendJSON(res, 500, {
+            success: false,
+            message: "Unable to login"
         });
     }
+}
 
+// --------------------------------------------------
+// ORDER
+// --------------------------------------------------
 
-    // ----------------------------------------------
-    // CURRENT USER
-    // ----------------------------------------------
+async function saveOrder(req, res) {
+    try {
+        const body = await readBody(req);
 
-    if (
-        req.method === "GET" &&
-        pathname === "/api/me"
-    ) {
-
-        const user =
-            requireLogin(req, res);
-
-        if (!user) return;
-
-
-        return sendJSON(res, 200, {
-
-            success: true,
-
-            user
-        });
-    }
-
-
-    // ----------------------------------------------
-    // CREATE ORDER
-    // ----------------------------------------------
-
-    if (
-        req.method === "POST" &&
-        pathname === "/api/orders"
-    ) {
-
-        const user =
-            requireLogin(req, res);
-
-        if (!user) return;
-
-
-        const body =
-            await getRequestBody(req);
-
-
-        if (
-            !body.items ||
-            !Array.isArray(body.items) ||
-            body.items.length === 0
-        ) {
-
-            return sendJSON(res, 400, {
-
-                success: false,
-
-                message:
-                    "Order must contain products."
-            });
-        }
-
+        const username =
+            safeUsername(body.username || "guest");
 
         const orderId =
-            "ORD-" +
-            Date.now();
-
+            `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
 
         const order = {
-
-            id:
-                orderId,
-
-            username:
-                user.username,
-
-            customer:
-                body.customer || "",
-
-            phone:
-                body.phone || "",
-
-            address:
-                body.address || "",
-
-            items:
-                body.items,
-
-            total:
-                Number(body.total || 0),
-
-            status:
-                "Order Placed",
-
-            date:
-                new Date().toISOString()
+            orderId,
+            username,
+            items: body.items || [],
+            total: body.total || 0,
+            createdAt: new Date().toISOString()
         };
 
-
-        await saveBlob(
+        await saveJSON(
             `orders/${orderId}.json`,
             order
         );
 
-
-        return sendJSON(res, 201, {
-
+        sendJSON(res, 201, {
             success: true,
+            message: "Order stored successfully",
+            orderId
+        });
 
-            message:
-                "Order stored successfully in Azure.",
+    } catch (error) {
+        console.error("ORDER ERROR:", error);
 
-            order
+        sendJSON(res, 500, {
+            success: false,
+            message: "Unable to store order"
         });
     }
+}
 
+// --------------------------------------------------
+// API ROUTER
+// --------------------------------------------------
 
-    // ----------------------------------------------
-    // GET ORDERS
-    // ----------------------------------------------
+async function handleAPI(req, res) {
 
-    if (
-        req.method === "GET" &&
-        pathname === "/api/orders"
-    ) {
+    if (req.method === "POST" &&
+        req.url === "/api/register") {
 
-        const user =
-            requireLogin(req, res);
+        return registerUser(req, res);
+    }
 
-        if (!user) return;
+    if (req.method === "POST" &&
+        req.url === "/api/login") {
 
+        return loginUser(req, res);
+    }
 
-        let orders;
+    if (req.method === "POST" &&
+        req.url === "/api/orders") {
 
+        return saveOrder(req, res);
+    }
 
-        if (user.role === "admin") {
+    if (req.method === "GET" &&
+        req.url === "/api/storage-test") {
 
-            orders =
-                await listBlobs("orders/");
+        try {
+            const container = getContainerClient();
 
-        } else {
+            await container.createIfNotExists();
 
-            const allOrders =
-                await listBlobs("orders/");
+            await saveJSON(
+                "system/test.json",
+                {
+                    status: "connected",
+                    time: new Date().toISOString()
+                }
+            );
 
-            orders =
-                allOrders.filter(
-                    order =>
-                        order.username === user.username
-                );
+            return sendJSON(res, 200, {
+                success: true,
+                message: "Azure Storage connection successful"
+            });
+
+        } catch (error) {
+            console.error(error);
+
+            return sendJSON(res, 500, {
+                success: false,
+                message: "Azure Storage connection failed"
+            });
         }
-
-
-        orders.sort(
-            (a, b) =>
-                new Date(b.date) -
-                new Date(a.date)
-        );
-
-
-        return sendJSON(res, 200, {
-
-            success: true,
-
-            orders
-        });
     }
-
-
-    // ----------------------------------------------
-    // HEALTH CHECK
-    // ----------------------------------------------
-
-    if (
-        req.method === "GET" &&
-        pathname === "/health"
-    ) {
-
-        return sendJSON(res, 200, {
-
-            status: "healthy",
-
-            storage:
-                STORAGE_ACCOUNT,
-
-            container:
-                CONTAINER_NAME
-        });
-    }
-
 
     return sendJSON(res, 404, {
-
         success: false,
-
-        message:
-            "API endpoint not found."
+        message: "API route not found"
     });
 }
 
+// --------------------------------------------------
+// SERVER
+// --------------------------------------------------
 
-// ======================================================
-// STATIC WEBSITE
-// ======================================================
+const server = http.createServer(async (req, res) => {
 
-function serveStaticFile(req, res) {
+    // Health check
+    if (req.url === "/health") {
 
-    let requestedPath =
-        decodeURIComponent(
-            req.url.split("?")[0]
-        );
-
-
-    if (requestedPath === "/") {
-        requestedPath = "/index.html";
+        return sendJSON(res, 200, {
+            status: "healthy"
+        });
     }
 
+    // API
+    if (req.url.startsWith("/api/")) {
+
+        return handleAPI(req, res);
+    }
+
+    // Static files
+    let requestedPath =
+        req.url === "/"
+            ? "index.html"
+            : req.url.split("?")[0].replace(/^\/+/, "");
 
     const filePath =
-        path.join(
-            __dirname,
-            requestedPath
-        );
+        path.join(__dirname, requestedPath);
 
-
-    // Prevent directory traversal
-    if (
-        !filePath.startsWith(__dirname)
-    ) {
-
+    // Security check
+    if (!filePath.startsWith(__dirname)) {
         res.writeHead(403);
-
-        res.end("403 - Forbidden");
-
-        return;
+        return res.end("403 - Forbidden");
     }
-
 
     if (!fs.existsSync(filePath)) {
-
         res.writeHead(404);
-
-        res.end("404 - File Not Found");
-
-        return;
+        return res.end("404 - File Not Found");
     }
 
-
-    const ext =
-        path.extname(filePath);
-
+    const ext = path.extname(filePath);
 
     const contentTypes = {
-
-        ".html":
-            "text/html",
-
-        ".css":
-            "text/css",
-
-        ".js":
-            "application/javascript",
-
-        ".json":
-            "application/json",
-
-        ".png":
-            "image/png",
-
-        ".jpg":
-            "image/jpeg",
-
-        ".jpeg":
-            "image/jpeg",
-
-        ".svg":
-            "image/svg+xml",
-
-        ".ico":
-            "image/x-icon"
+        ".html": "text/html",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".json": "application/json",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon"
     };
 
-
     res.writeHead(200, {
-
         "Content-Type":
             contentTypes[ext] ||
             "application/octet-stream"
     });
 
+    fs.createReadStream(filePath).pipe(res);
+});
 
-    fs.createReadStream(
-        filePath
-    ).pipe(res);
-}
-
-
-// ======================================================
-// MAIN SERVER
-// ======================================================
-
-const server =
-    http.createServer(
-        async (req, res) => {
-
-            try {
-
-                // CORS preflight
-                if (req.method === "OPTIONS") {
-
-                    res.writeHead(204, {
-
-                        "Access-Control-Allow-Origin":
-                            "*",
-
-                        "Access-Control-Allow-Headers":
-                            "Content-Type, Authorization",
-
-                        "Access-Control-Allow-Methods":
-                            "GET, POST, OPTIONS"
-                    });
-
-                    res.end();
-
-                    return;
-                }
-
-
-                // API requests
-                if (
-                    req.url.startsWith("/api/")
-                ) {
-
-                    await handleAPI(
-                        req,
-                        res
-                    );
-
-                    return;
-                }
-
-
-                // Static website
-                serveStaticFile(
-                    req,
-                    res
-                );
-
-
-            } catch (error) {
-
-                console.error(
-                    "Server error:",
-                    error
-                );
-
-
-                sendJSON(res, 500, {
-
-                    success: false,
-
-                    message:
-                        "Internal server error."
-                });
-            }
-        }
-    );
-
-
-// ======================================================
-// START
-// ======================================================
-
-initializeAzureStorage()
-    .then(() => {
-
-        server.listen(
-            PORT,
-            () => {
-
-                console.log(
-                    `Server running on port ${PORT}`
-                );
-
-            }
-        );
-
-    })
-    .catch(error => {
-
-        console.error(
-            "Azure Storage initialization failed:",
-            error
-        );
-
-        process.exit(1);
-    });
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
