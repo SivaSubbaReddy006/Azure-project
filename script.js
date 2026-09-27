@@ -349,3 +349,130 @@ function searchProducts() {
         }
     });
 }
+// ==================== LOGIN & SIGNUP ====================
+
+// Signup
+function signupUser(event) {
+    event.preventDefault();
+
+    const username = document.getElementById("signup-username").value.trim();
+    const password = document.getElementById("signup-password").value;
+
+    if (!username || !password) {
+        alert("Please enter username and password.");
+        return;
+    }
+
+    const users = JSON.parse(localStorage.getItem("users")) || [];
+
+    const existingUser = users.find(user => user.username === username);
+
+    if (existingUser) {
+        alert("Username already exists.");
+        return;
+    }
+
+    users.push({
+        username: username,
+        password: password
+    });
+
+    localStorage.setItem("users", JSON.stringify(users));
+
+    alert("Account created successfully!");
+
+    document.getElementById("signup-form").reset();
+
+    document.getElementById("login").scrollIntoView({
+        behavior: "smooth"
+    });
+}
+
+
+// Login
+function loginUser(event) {
+    event.preventDefault();
+
+    const username = document.getElementById("login-username").value.trim();
+    const password = document.getElementById("login-password").value;
+
+    const users = JSON.parse(localStorage.getItem("users")) || [];
+
+    const user = users.find(
+        user =>
+            user.username === username &&
+            user.password === password
+    );
+
+    if (!user) {
+        alert("Invalid username or password.");
+        return;
+    }
+
+    localStorage.setItem(
+        "loggedInUser",
+        JSON.stringify(user)
+    );
+
+    alert("Login successful!");
+
+    document.getElementById("login-form").reset();
+
+    updateAuthUI();
+}
+
+
+// Logout
+function logoutUser() {
+    localStorage.removeItem("loggedInUser");
+
+    alert("You have been logged out.");
+
+    updateAuthUI();
+}
+
+
+// Update Login / Signup / Logout links
+function updateAuthUI() {
+
+    const loginLink = document.querySelector('a[href="#login"]');
+    const signupLink = document.querySelector('a[href="#signup"]');
+    const logoutLink = document.getElementById("logout-link");
+
+    const loggedInUser =
+        JSON.parse(localStorage.getItem("loggedInUser"));
+
+    if (loggedInUser) {
+
+        if (loginLink) {
+            loginLink.style.display = "none";
+        }
+
+        if (signupLink) {
+            signupLink.style.display = "none";
+        }
+
+        if (logoutLink) {
+            logoutLink.style.display = "block";
+        }
+
+    } else {
+
+        if (loginLink) {
+            loginLink.style.display = "block";
+        }
+
+        if (signupLink) {
+            signupLink.style.display = "block";
+            
+        }
+
+        if (logoutLink) {
+            logoutLink.style.display = "none";
+        }
+    }
+}
+
+
+// Check login status when page opens
+updateAuthUI();
